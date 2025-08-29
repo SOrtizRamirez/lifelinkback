@@ -2,8 +2,6 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 const fs = require('fs');
 
-const caCert = fs.readFileSync(__dirname + '/SSL/ca.pem');
-
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
@@ -12,11 +10,7 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0,
-    ssl: {
-        ca: caCert,
-        rejectUnauthorized: true
-    }
+    queueLimit: 0
 });
 
 pool.on('error', (err) => {
