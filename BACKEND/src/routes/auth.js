@@ -2,7 +2,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db'); // OJO: exportas el pool directo => sin llaves
+const pool = require('../config/db'); 
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
@@ -13,6 +13,10 @@ function safeBcryptCompare(plain, hash) {
     if (!hash.startsWith('$2')) return Promise.resolve(false);
     return bcrypt.compare(plain, hash).catch(() => false);
 }
+router.get('/test', async (req,res)=>{
+    console.log("hola")
+    return res.json("hola")
+})
 
 router.post('/patient/login', async (req, res) => {
     try {
