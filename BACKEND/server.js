@@ -1,5 +1,6 @@
-const express = require('express');
 const cors = require('cors');
+const express = require('express');
+
 const patientRoutes = require('./src/routes/patients.js');
 const authRoutes = require('./src/routes/auth.js');
 const publicRoutes = require('./src/routes/public.js');
@@ -11,7 +12,17 @@ const pool = require('./src/config/db.js');
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+const allowedOrigins = [
+  'https://lifelinkfont.onrender.com', // tu front en Render
+  'http://localhost:5173'              // dev local (si aplica)
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  credentials: true
+}));
 app.use(express.json());
 app.use('/auth', require('./src/routes/auth'));
 
