@@ -1,222 +1,148 @@
+// routes/emergency_contact.js
 const express = require('express');
 const pool = require('../config/db');
+const requireAuth = require('../middleware/auth'); // <— usa tu factory(role)
 const router = express.Router();
 
+// protege TODO el router
+router.use(requireAuth('patient'));
+
+// LISTAR: SIEMPRE del paciente autenticado
 router.get('/', async (req, res) => {
-    const { id, relation, phone, email, fullname, limit = 10, offset = 0 } = req.query;
+  const patientId = req.user.sub;
+  const { relation, phone, email, fullname, limit = 10, offset = 0 } = req.query;
 
-    const conditions = [];
-    const values = [];
+  const conditions = ['id = ?'];
+  const values = [patientId];
 
-    if (id) {
-        conditions.push(`id = ?`);
-        values.push(id); 
-    }
-    if (relation) {
-        conditions.push(`LOWER(relation) LIKE LOWER(?)`);
-        values.push(`%${relation}%`);
-    }
-    if (phone) {
-        conditions.push(`phone LIKE ?`);
-        values.push(`%${phone}%`);
-    }
-    if (email) {
-        conditions.push(`LOWER(email) LIKE LOWER(?)`);
-        values.push(`%${email}%`);
-    }
-    if (fullname) {
-        conditions.push(`LOWER(fullname) LIKE LOWER(?)`);
-        values.push(`%${fullname}%`);
-    }
-    values.push(parseInt(limit), parseInt(offset));
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  if (relation) { conditions.push('LOWER(relation) LIKE LOWER(?)'); values.push(`%${relation}%`); }
+  if (phone)    { conditions.push('phone LIKE ?');                   values.push(`%${phone}%`); }
+  if (email)    { conditions.push('LOWER(email) LIKE LOWER(?)');     values.push(`%${email}%`); }
+  if (fullname) { conditions.push('LOWER(fullname) LIKE LOWER(?)');  values.push(`%${fullname}%`); }
 
-    try {
-        const query = `
-            SELECT contact_id, id, fullname, relation, phone, email
-            FROM emergency_contact
-            ${whereClause}
-            ORDER BY contact_id
-            LIMIT ? OFFSET ?
-        `;
-        const [rows] = await pool.query(query, values);
+  values.push(parseInt(limit,10), parseInt(offset,10));
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
-        const countQuery = `SELECT COUNT(*) as count FROM emergency_contact ${whereClause}`;
-        const [countRows] = await pool.query(countQuery, values.slice(0, values.length - 2));
+  try {
+    const [rows] = await pool.query(
+      `SELECT contact_id, id, fullname, relation, phone, email
+       FROM emergency_contact
+       ${whereClause}
+       ORDER BY contact_id
+       LIMIT ? OFFSET ?`, values);
 
-        res.json({
-            status: 'success',
-            data: rows,
-            pagination: {
-                total: parseInt(countRows[0].count, 10),
-                limit: parseInt(limit, 10),
-                offset: parseInt(offset, 10)
-            }
-        });
-    } catch (err) {
-        console.error('Error fetching emergency contacts:', err);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to fetch emergency contacts'
-        });
-    }
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS count FROM emergency_contact ${whereClause}`,
+      values.slice(0, values.length - 2)
+    );
+
+    res.json({ status:'success', data: rows, pagination:{
+      total: Number(countRows[0].count), limit: Number(limit), offset: Number(offset)
+    }});
+  } catch (err) {
+    console.error('Error fetching emergency contacts:', err);
+    res.status(500).json({ status:'error', message:'Failed to fetch emergency contacts' });
+  }
 });
 
+// OBTENER UNO (verifica pertenencia)
 router.get('/:contact_id', async (req, res) => {
-    const { contact_id } = req.params;
-    try {
-        const [rows] = await pool.query('SELECT contact_id, id, fullname, relation, phone, email FROM emergency_contact WHERE contact_id = ?', [contact_id]);
-        if (rows.length === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Emergency contact not found'
-            });
-        }
-        res.json({
-            status: 'success',
-            data: rows[0]
-        });
-    } catch (err) {
-        console.error('Error fetching emergency contact:', err);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to fetch emergency contact'
-        });
-    }
+  const patientId = req.user.sub;
+  const { contact_id } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT contact_id, id, fullname, relation, phone, email
+       FROM emergency_contact
+       WHERE contact_id = ? AND id = ?`,
+      [contact_id, patientId]
+    );
+    if (!rows.length) return res.status(404).json({ status:'error', message:'Emergency contact not found' });
+    res.json({ status:'success', data: rows[0] });
+  } catch (err) {
+    console.error('Error fetching emergency contact:', err);
+    res.status(500).json({ status:'error', message:'Failed to fetch emergency contact' });
+  }
 });
 
+// CREAR (NO pidas id en el body: usa el del token)
 router.post('/', async (req, res) => {
-    const { id, fullname, relation, phone, email } = req.body;
+  const patientId = req.user.sub;
+  const { fullname, relation, phone, email } = req.body;
 
-    if (!id || !fullname || !relation) {
-        return res.status(400).json({
-            status: 'error',
-            message: 'Patient ID, full name, and relation are required'
-        });
-    }
+  if (!fullname || !relation) {
+    return res.status(400).json({ status:'error', message:'Full name and relation are required' });
+  }
 
-    try {
-        const [patient] = await pool.query('SELECT id FROM patients WHERE id = ?', [id]);
-        if (patient.length === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Patient not found'
-            });
-        }
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO emergency_contact (id, fullname, relation, phone, email) VALUES (?, ?, ?, ?, ?)',
+      [patientId, fullname, relation, phone || null, email || null]
+    );
 
-        const query = `
-            INSERT INTO emergency_contact (id, fullname, relation, phone, email)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-        const [result] = await pool.query(query, [id, fullname, relation, phone, email]);
+    const [newContact] = await pool.query(
+      'SELECT contact_id, id, fullname, relation, phone, email FROM emergency_contact WHERE contact_id = ? AND id = ?',
+      [result.insertId, patientId]
+    );
 
-        const [newContact] = await pool.query('SELECT contact_id, id, fullname, relation, phone, email FROM emergency_contact WHERE contact_id = ?', [result.insertId]);
-
-        res.status(201).json({
-            status: 'success',
-            data: newContact[0]
-        });
-    } catch (err) {
-        console.error('Error creating emergency contact:', err);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to create emergency contact'
-        });
-    }
+    res.status(201).json({ status:'success', data: newContact[0] });
+  } catch (err) {
+    console.error('Error creating emergency contact:', err);
+    res.status(500).json({ status:'error', message:'Failed to create emergency contact' });
+  }
 });
 
+// ACTUALIZAR (no permitas cambiar de dueño)
 router.put('/:contact_id', async (req, res) => {
-    const { contact_id } = req.params;
-    const { id, fullname, relation, phone, email } = req.body;
+  const patientId = req.user.sub;
+  const { contact_id } = req.params;
+  const { fullname, relation, phone, email } = req.body;
 
-    if (!id && !fullname && !relation && !phone && !email) {
-        return res.status(400).json({
-            status: 'error',
-            message: 'At least one field is required for update'
-        });
-    }
+  if (!fullname && !relation && !phone && !email) {
+    return res.status(400).json({ status:'error', message:'At least one field is required for update' });
+  }
 
-    try {
-        if (id) {
-            const [patient] = await pool.query('SELECT id FROM patients WHERE id = ?', [id]);
-            if (patient.length === 0) {
-                return res.status(404).json({
-                    status: 'error',
-                    message: 'Patient not found'
-                });
-            }
-        }
+  try {
+    const sets = [], vals = [];
+    if (fullname) { sets.push('fullname = ?'); vals.push(fullname); }
+    if (relation) { sets.push('relation = ?'); vals.push(relation); }
+    if (phone)    { sets.push('phone = ?');    vals.push(phone); }
+    if (email)    { sets.push('email = ?');    vals.push(email); }
+    vals.push(contact_id, patientId);
 
-        const updates = [];
-        const values = [];
+    const [r] = await pool.query(
+      `UPDATE emergency_contact SET ${sets.join(', ')} WHERE contact_id = ? AND id = ?`,
+      vals
+    );
+    if (!r.affectedRows) return res.status(404).json({ status:'error', message:'Emergency contact not found' });
 
-        if (id) {
-            updates.push(`id = ?`);
-            values.push(id);
-        }
-        if (fullname) {
-            updates.push(`fullname = ?`);
-            values.push(fullname);
-        }
-        if (relation) {
-            updates.push(`relation = ?`);
-            values.push(relation);
-        }
-        if (phone) {
-            updates.push(`phone = ?`);
-            values.push(phone);
-        }
-        if (email) {
-            updates.push(`email = ?`);
-            values.push(email);
-        }
-
-        values.push(contact_id);
-
-        const query = `UPDATE emergency_contact SET ${updates.join(', ')} WHERE contact_id = ?`;
-        const [result] = await pool.query(query, values);
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Emergency contact not found'
-            });
-        }
-        const [updatedContact] = await pool.query('SELECT contact_id, id, fullname, relation, phone, email FROM emergency_contact WHERE contact_id = ?', [contact_id]);
-        res.json({
-            status: 'success',
-            data: updatedContact[0]
-        });
-    } catch (err) {
-        console.error('Error updating emergency contact:', err);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to update emergency contact'
-        });
-    }
+    const [updated] = await pool.query(
+      'SELECT contact_id, id, fullname, relation, phone, email FROM emergency_contact WHERE contact_id = ? AND id = ?',
+      [contact_id, patientId]
+    );
+    res.json({ status:'success', data: updated[0] });
+  } catch (err) {
+    console.error('Error updating emergency contact:', err);
+    res.status(500).json({ status:'error', message:'Failed to update emergency contact' });
+  }
 });
 
+// ELIMINAR (solo mis contactos)
 router.delete('/:contact_id', async (req, res) => {
-    const { contact_id } = req.params;
-    try {
-        const [result] = await pool.query('DELETE FROM emergency_contact WHERE contact_id = ?', [contact_id]);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Emergency contact not found'
-            });
-        }
-        res.json({
-            status: 'success',
-            message: 'Emergency contact deleted successfully'
-        });
-    } catch (err) {
-        console.error('Error deleting emergency contact:', err);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to delete emergency contact'
-        });
-    }
+  const patientId = req.user.sub;
+  const { contact_id } = req.params;
+
+  try {
+    const [r] = await pool.query(
+      'DELETE FROM emergency_contact WHERE contact_id = ? AND id = ?',
+      [contact_id, patientId]
+    );
+    if (!r.affectedRows) return res.status(404).json({ status:'error', message:'Emergency contact not found' });
+    res.json({ status:'success', message:'Emergency contact deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting emergency contact:', err);
+    res.status(500).json({ status:'error', message:'Failed to delete emergency contact' });
+  }
 });
 
 module.exports = router;
