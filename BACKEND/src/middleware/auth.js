@@ -1,29 +1,17 @@
-// BACKEND/src/middleware/auth.js (CommonJS)
+// middlewares/auth.js
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+module.exports = (req, res, next) => {
+  const h = req.headers.authorization || '';
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  if (!m) return res.status(401).json({ message: 'Token requerido' });
 
-function requireAuth(role) {
-    return (req, res, next) => {
-        const header = req.headers.authorization || '';
-        const [, token] = header.split(' ');
-        if (!token) return res.status(401).json({ status: 'error', message: 'Token requerido' });
+  try {
+    req.user = jwt.verify(m[1], process.env.JWT_SECRET);
+    return next();
+  } catch {
+    return res.status(401).json({ message: 'Token inválido o expirado' });
+  }
+};
 
-        try {
-            const payload = jwt.verify(token, JWT_SECRET);
-            if (role && payload.role !== role) {
-                return res.status(403).json({ status: 'error', message: 'Rol no autorizado' });
-            }
-            req.user = payload;
-            next();
-        } catch (e) {
-            return res.status(401).json({ status: 'error', message: 'Token inválido/expirado' });
-        }
-    };
-}
-
-const signToken = (sub, role) =>
-    jwt.sign({ sub, role }, JWT_SECRET, { expiresIn: '2h' });
-
-module.exports = { requireAuth, signToken };
 
