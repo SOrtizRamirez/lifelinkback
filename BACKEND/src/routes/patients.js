@@ -15,7 +15,7 @@ function generateQR() {
 }
 
 
-router.post('/patients/register', async (req, res) => {
+router.post('/register', async (req, res) => {
     try {
         const {
             identity_document, password,
