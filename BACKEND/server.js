@@ -13,7 +13,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const allowedOrigins = [
-  'https://lifelinkfont.onrender.com', // tu front en Render
+  'https://lifelinkfront-mogk.onrender.com', // tu front en Render
   'http://localhost:5173'              // dev local (si aplica)
 ];
 
