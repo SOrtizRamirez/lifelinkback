@@ -371,9 +371,3 @@ Incluye la colección `docs/api.postman_collection.json` con ejemplos de:
 ## 📄 Licencia
 
 Licencia de Software Propietario — LifeLink v1.0. Todos los derechos reservados.
-
----
-## 👩‍⚕️ Autora
-
-**Sharon Ortiz** — Full‑Stack Developer & Psychologist.  
-Enfoque: empatía, innovación y experiencias seguras para salud digital.
